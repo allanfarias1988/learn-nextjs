@@ -27,8 +27,8 @@ export async function fetchRevenue(): Promise<Revenue[]> {
 		if (error) throw error;
 		return data as Revenue[];
 	} catch (error) {
-		console.error("Error:", error);
-		throw new Error("Failed to fetch revenue data.");
+		console.error("Erro no banco de dados:", error);
+		throw new Error("Erro ao carregar receita.");
 	}
 }
 
@@ -61,8 +61,8 @@ export async function fetchLatestInvoices(): Promise<LatestInvoiceRaw[]> {
 
 		return formattedData;
 	} catch (error) {
-		console.error("Error:", error);
-		throw new Error("Failed to fetch latest invoices.");
+		console.error("Erro no banco de dados:", error);
+		throw new Error("Erro ao carregar faturas mais recentes.");
 	}
 }
 
@@ -88,12 +88,13 @@ export async function fetchCardData() {
 			totalPendingInvoices: formatCurrency(totalPending),
 		};
 	} catch (error) {
-		console.error("Error:", error);
-		throw new Error("Failed to fetch card data.");
+		console.error("Erro:", error);
+		throw new Error("Falha ao carregar dados.");
 	}
 }
 
 const ITEMS_PER_PAGE = 6;
+
 export async function fetchFilteredInvoices(
 	query: string,
 	currentPage: number,
@@ -101,44 +102,59 @@ export async function fetchFilteredInvoices(
 	const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
 	try {
-		const { data, error } = await supabase
-			.from("invoices")
-			.select(`  
-        id,  
-        amount,  
-        date,  
-        status,  
-        customers (name, email, image_url)  
-      `)
-			.ilike("customers.name", `%${query}%`)
+		let queryBuilder = supabase.from("invoices").select(`  
+                *,  
+                customers(*)  
+            `);
+
+		// Adiciona filtros se houver query
+		if (query && query.trim()) {
+			queryBuilder = queryBuilder.or(
+				`customers.name.ilike.%${query}%,status.ilike.%${query}%`,
+			);
+		}
+
+		// Adiciona ordenação e paginação depois dos filtros
+		const { data, error } = await queryBuilder
 			.order("date", { ascending: false })
 			.range(offset, offset + ITEMS_PER_PAGE - 1);
 
-		if (error) throw error;
-		return data as unknown as InvoicesTable[];
+		if (error) {
+			console.error("Erro na query:", error);
+			return [];
+		}
+
+		return (data || []) as InvoicesTable[];
 	} catch (error) {
-		console.error("Error:", error);
-		throw new Error("Failed to fetch invoices.");
+		console.error("Erro ao buscar faturas:", error);
+		return [];
 	}
 }
 
 export async function fetchInvoicesPages(query: string): Promise<number> {
 	try {
-		const { count, error } = await supabase
+		let queryBuilder = supabase
 			.from("invoices")
-			.select("*, customers (name, email)", { count: "exact", head: true })
-			.ilike("customers.name", `%${query}%`)
-			.or(
-				`email.ilike.%${query}%,amount::text.ilike.%${query}%,date::text.ilike.%${query}%,status.ilike.%${query}%`,
+			.select("*", { count: "exact", head: true });
+
+		// Adiciona filtros se houver query
+		if (query && query.trim()) {
+			queryBuilder = queryBuilder.or(
+				`customers.name.ilike.%${query}%,status.ilike.%${query}%`,
 			);
+		}
 
-		if (error) throw error;
+		const { count, error } = await queryBuilder;
 
-		const totalPages = Math.ceil(Number(count) / ITEMS_PER_PAGE);
-		return totalPages;
+		if (error) {
+			console.error("Erro detalhado Supabase:", error);
+			return 1;
+		}
+
+		return Math.max(1, Math.ceil((count ?? 0) / ITEMS_PER_PAGE));
 	} catch (error) {
-		console.error("Database Error:", error);
-		throw new Error("Failed to fetch total number of invoices.");
+		console.error("Erro ao buscar total de páginas:", error);
+		return 1;
 	}
 }
 
@@ -164,8 +180,8 @@ export async function fetchInvoiceById(id: string): Promise<InvoiceForm> {
 			amount: data.amount / 100,
 		} as InvoiceForm;
 	} catch (error) {
-		console.error("Database Error:", error);
-		throw new Error("Failed to fetch invoice.");
+		console.error("Erro no banco de dados:", error);
+		throw new Error("Erro ao carregar a faturas.");
 	}
 }
 
@@ -179,8 +195,8 @@ export async function fetchCustomers(): Promise<CustomerField[]> {
 		if (error) throw error;
 		return data as CustomerField[];
 	} catch (error) {
-		console.error("Database Error:", error);
-		throw new Error("Failed to fetch all customers.");
+		console.error("Erro no banco de dados:", error);
+		throw new Error("Erro ao carregar todos os clientes.");
 	}
 }
 
@@ -197,7 +213,7 @@ export async function fetchFilteredCustomers(
 		if (error) throw error;
 		return data as CustomersTableType[];
 	} catch (error) {
-		console.error("Database Error:", error);
-		throw new Error("Failed to fetch customers.");
+		console.error("Erro no banco de dados:", error);
+		throw new Error("Erro ao carregar clientes.");
 	}
 }
